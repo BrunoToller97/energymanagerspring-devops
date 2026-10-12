@@ -1,0 +1,14 @@
+target
+.git
+.github
+.idea
+.vscode
+*.iml
+
+.env
+.env.staging
+.env.production
+
+logs
+
+README.md
