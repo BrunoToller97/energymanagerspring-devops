@@ -75,5 +75,5 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE_NAME }}:latest
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ghcr.io/brunotoller97/energymanagerspring-devops:latest
+            ghcr.io/brunotoller97/energymanagerspring-devops:${{ github.sha }}
