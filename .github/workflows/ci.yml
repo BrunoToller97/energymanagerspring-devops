@@ -20,6 +20,9 @@ env:
 
 jobs:
 
+  # ==========================================
+  # CI - TESTES E BUILD MAVEN
+  # ==========================================
   test-and-build:
     name: Test and Build
     runs-on: ubuntu-latest
@@ -45,6 +48,9 @@ jobs:
         run: ./mvnw package -DskipTests
 
 
+  # ==========================================
+  # CI - BUILD E PUSH DA IMAGEM
+  # ==========================================
   docker-build-and-push:
     name: Docker Build and Push
     runs-on: ubuntu-latest
@@ -75,5 +81,208 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ghcr.io/brunotoller97/energymanagerspring-devops:latest
-            ghcr.io/brunotoller97/energymanagerspring-devops:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+
+  # ==========================================
+  # CD - STAGING
+  # ==========================================
+  deploy-staging:
+    name: Deploy Staging
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+
+    needs:
+      - docker-build-and-push
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    environment: staging
+
+    env:
+      DEPLOY_ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+      DEPLOY_PROFILE: ${{ vars.SPRING_PROFILE }}
+      DEPLOY_PORT: ${{ vars.APP_PORT }}
+      DEPLOY_SHOW_SQL: ${{ vars.SHOW_SQL }}
+
+      DEPLOY_DB_URL: ${{ secrets.DB_URL }}
+      DEPLOY_DB_USER: ${{ secrets.DB_USER }}
+      DEPLOY_DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      DEPLOY_JWT_SECRET: ${{ secrets.JWT_SECRET }}
+
+    steps:
+      - name: Checkout do codigo
+        uses: actions/checkout@v7
+
+      - name: Login no GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Criar configuracao de staging
+        shell: powershell
+        run: |
+          @(
+            "ENVIRONMENT=$env:DEPLOY_ENVIRONMENT"
+            "SPRING_PROFILE=$env:DEPLOY_PROFILE"
+            "APP_PORT=$env:DEPLOY_PORT"
+            "APP_IMAGE=${{ env.IMAGE_NAME }}:${{ github.sha }}"
+            "DB_URL=$env:DEPLOY_DB_URL"
+            "DB_USER=$env:DEPLOY_DB_USER"
+            "DB_PASSWORD=$env:DEPLOY_DB_PASSWORD"
+            "JWT_SECRET=$env:DEPLOY_JWT_SECRET"
+            "SHOW_SQL=$env:DEPLOY_SHOW_SQL"
+          ) | Set-Content -Path .env.deploy -Encoding ascii
+
+      - name: Baixar imagem de staging
+        shell: powershell
+        run: |
+          docker compose `
+            --env-file .env.deploy `
+            -p energy-staging `
+            pull app
+
+      - name: Deploy de staging
+        shell: powershell
+        run: |
+          docker compose `
+            --env-file .env.deploy `
+            -p energy-staging `
+            up -d --no-build app
+
+      - name: Verificar staging
+        shell: powershell
+        run: |
+          Start-Sleep -Seconds 10
+
+          docker compose `
+            --env-file .env.deploy `
+            -p energy-staging `
+            ps
+
+          $running = docker inspect `
+            -f "{{.State.Running}}" `
+            energymanagerspring-staging
+
+          if ($running -ne "true") {
+            docker logs energymanagerspring-staging
+            throw "Container de staging nao esta em execucao."
+          }
+
+      - name: Remover arquivo temporario
+        if: always()
+        shell: powershell
+        run: |
+          Remove-Item .env.deploy -ErrorAction SilentlyContinue
+
+
+  # ==========================================
+  # CD - PRODUCTION
+  # ==========================================
+  deploy-production:
+    name: Deploy Production
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+
+    needs:
+      - deploy-staging
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    environment: production
+
+    env:
+      DEPLOY_ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+      DEPLOY_PROFILE: ${{ vars.SPRING_PROFILE }}
+      DEPLOY_PORT: ${{ vars.APP_PORT }}
+      DEPLOY_SHOW_SQL: ${{ vars.SHOW_SQL }}
+
+      DEPLOY_DB_URL: ${{ secrets.DB_URL }}
+      DEPLOY_DB_USER: ${{ secrets.DB_USER }}
+      DEPLOY_DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      DEPLOY_JWT_SECRET: ${{ secrets.JWT_SECRET }}
+
+    steps:
+      - name: Checkout do codigo
+        uses: actions/checkout@v7
+
+      - name: Login no GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Criar configuracao de production
+        shell: powershell
+        run: |
+          @(
+            "ENVIRONMENT=$env:DEPLOY_ENVIRONMENT"
+            "SPRING_PROFILE=$env:DEPLOY_PROFILE"
+            "APP_PORT=$env:DEPLOY_PORT"
+            "APP_IMAGE=${{ env.IMAGE_NAME }}:${{ github.sha }}"
+            "DB_URL=$env:DEPLOY_DB_URL"
+            "DB_USER=$env:DEPLOY_DB_USER"
+            "DB_PASSWORD=$env:DEPLOY_DB_PASSWORD"
+            "JWT_SECRET=$env:DEPLOY_JWT_SECRET"
+            "SHOW_SQL=$env:DEPLOY_SHOW_SQL"
+          ) | Set-Content -Path .env.deploy -Encoding ascii
+
+      - name: Liberar porta da aplicacao local
+        shell: powershell
+        run: |
+          $localContainer = docker ps -a `
+            --filter "name=energymanagerspring-local" `
+            --format "{{.Names}}"
+
+          if ($localContainer -contains "energymanagerspring-local") {
+            docker rm -f energymanagerspring-local
+          }
+
+      - name: Baixar imagem de production
+        shell: powershell
+        run: |
+          docker compose `
+            --env-file .env.deploy `
+            -p energy-production `
+            pull app
+
+      - name: Deploy de production
+        shell: powershell
+        run: |
+          docker compose `
+            --env-file .env.deploy `
+            -p energy-production `
+            up -d --no-build app
+
+      - name: Verificar production
+        shell: powershell
+        run: |
+          Start-Sleep -Seconds 10
+
+          docker compose `
+            --env-file .env.deploy `
+            -p energy-production `
+            ps
+
+          $running = docker inspect `
+            -f "{{.State.Running}}" `
+            energymanagerspring-production
+
+          if ($running -ne "true") {
+            docker logs energymanagerspring-production
+            throw "Container de production nao esta em execucao."
+          }
+
+      - name: Remover arquivo temporario
+        if: always()
+        shell: powershell
+        run: |
+          Remove-Item .env.deploy -ErrorAction SilentlyContinue
