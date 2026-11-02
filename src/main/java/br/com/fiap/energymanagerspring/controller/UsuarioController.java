@@ -48,7 +48,8 @@ public class UsuarioController {
 
     @PutMapping("/usuarios")
     @ResponseStatus(HttpStatus.OK)
-    public Usuario atualizar(@Valid @RequestBody Usuario usuario){
+    public UsuarioExibicaoDTO atualizar(
+            @Valid @RequestBody Usuario usuario) {
         return usuarioService.atualizar(usuario);
     }
 

@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": [
+    "content",
+    "totalElements",
+    "totalPages",
+    "size",
+    "number"
+  ],
+  "properties": {
+    "content": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "totalElements": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "totalPages": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "size": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "number": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,3 +1,4 @@
+
 package br.com.fiap.energymanagerspring.service;
 
 import br.com.fiap.energymanagerspring.dto.UsuarioCadastroDTO;
@@ -21,10 +22,13 @@ public class UsuarioService {
     @Autowired
     private UsuarioRepository usuarioRepository;
 
-    public UsuarioExibicaoDTO salvarUsuario(UsuarioCadastroDTO dto){
+    private final BCryptPasswordEncoder passwordEncoder =
+            new BCryptPasswordEncoder();
 
+    public UsuarioExibicaoDTO salvarUsuario(UsuarioCadastroDTO dto) {
 
-        String senhaCriptografada = new BCryptPasswordEncoder().encode(dto.senha());
+        String senhaCriptografada =
+                passwordEncoder.encode(dto.senha());
 
         Usuario usuario = new Usuario();
 
@@ -38,50 +42,80 @@ public class UsuarioService {
         return new UsuarioExibicaoDTO(salvo);
     }
 
-    public UsuarioExibicaoDTO buscarPorId(Long id){
-        Optional<Usuario> usuarioOptional = usuarioRepository.findById(id);
+    public UsuarioExibicaoDTO buscarPorId(Long id) {
 
-        if (usuarioOptional.isPresent()){
+        Optional<Usuario> usuarioOptional =
+                usuarioRepository.findById(id);
+
+        if (usuarioOptional.isPresent()) {
             return new UsuarioExibicaoDTO(usuarioOptional.get());
-        } else {
-            throw new UsuarioNaoEncontradoException("Usuário não existe no banco de dados!");
         }
+
+        throw new UsuarioNaoEncontradoException(
+                "Usuário não existe no banco de dados!"
+        );
     }
 
-    public Page<UsuarioExibicaoDTO> listarTodos(Pageable paginacao){
+    public Page<UsuarioExibicaoDTO> listarTodos(Pageable paginacao) {
+
         return usuarioRepository
                 .findAll(paginacao)
                 .map(UsuarioExibicaoDTO::new);
     }
 
-    public void excluir(Long id){
-        Optional<Usuario> usuarioOptional = usuarioRepository.findById(id);
+    public void excluir(Long id) {
 
-        if (usuarioOptional.isPresent()){
-            usuarioRepository.delete(usuarioOptional.get());
-        } else {
-            throw new RuntimeException("Usuário não encontrado!");
-        }
+        Usuario usuario = usuarioRepository.findById(id)
+                .orElseThrow(() -> new UsuarioNaoEncontradoException(
+                        "Usuário não encontrado!"
+                ));
+
+        usuarioRepository.delete(usuario);
     }
 
-    public Usuario atualizar(Usuario usuario){
-        Optional<Usuario> usuarioOptional = usuarioRepository.findById(usuario.getUsuarioId());
+    public UsuarioExibicaoDTO atualizar(Usuario usuario) {
 
-        if (usuarioOptional.isPresent()){
-            return usuarioRepository.save(usuario);
-        } else {
-            throw new RuntimeException("Usuário não encontrado!");
+        Usuario existente = usuarioRepository
+                .findById(usuario.getUsuarioId())
+                .orElseThrow(() -> new UsuarioNaoEncontradoException(
+                        "Usuário não encontrado!"
+                ));
+
+        if (usuario.getNome() != null) {
+            existente.setNome(usuario.getNome());
         }
+
+        if (usuario.getEmail() != null) {
+            existente.setEmail(usuario.getEmail());
+        }
+
+        if (usuario.getRole() != null) {
+            existente.setRole(usuario.getRole());
+        }
+
+        if (usuario.getSenha() != null
+                && !usuario.getSenha().isBlank()) {
+            existente.setSenha(
+                    passwordEncoder.encode(usuario.getSenha())
+            );
+        }
+
+        Usuario atualizado = usuarioRepository.save(existente);
+
+        return new UsuarioExibicaoDTO(atualizado);
     }
 
-    public UsuarioExibicaoDTO buscarPorNome(String nome){
-        Optional<Usuario> usuarioOptional = usuarioRepository.buscarPorNome(nome);
+    public UsuarioExibicaoDTO buscarPorNome(String nome) {
 
-        if (usuarioOptional.isPresent()){
+        Optional<Usuario> usuarioOptional =
+                usuarioRepository.buscarPorNome(nome);
+
+        if (usuarioOptional.isPresent()) {
             return new UsuarioExibicaoDTO(usuarioOptional.get());
-        } else {
-            throw new RuntimeException("Usuário procurado não existe!");
         }
-    }
 
+        throw new UsuarioNaoEncontradoException(
+                "Usuário procurado não existe!"
+        );
+    }
 }
